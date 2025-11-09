@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# [NOTE] ตั้งค่าฟอนต์พื้นฐานสำหรับ Streamlit Cloud เพื่อแก้ปัญหาตัวอักษรกล่องสี่เหลี่ยม
+# [NOTE] ตั้งค่าฟอนต์พื้นฐานสำหรับ Streamlit Cloud
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans'] 
 
@@ -16,64 +16,104 @@ st.caption("โปรแกรมต้นแบบจากค่าย CalcTec
 # ----------------------------
 st.subheader("⚙️ ข้อมูลศูนย์คัดแยกและระบบโซลาร์เซลล์")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
+
 with col1:
+    st.markdown("**ข้อมูลภาระการใช้พลังงาน (Demand)**")
     waste_type = st.selectbox("ประเภทขยะหลัก", ["พลาสติก", "กระดาษ", "อินทรีย์", "อื่น ๆ"], index=0)
-    # [INPUT] ปริมาณและเครื่องจักรที่เกี่ยวข้องกับการใช้พลังงาน
     waste_amount = st.number_input("ปริมาณขยะต่อวัน (กิโลกรัม)", min_value=1.0, value=500.0)
     machine_count = st.number_input("จำนวนเครื่องจักร", min_value=1, step=1, value=5)
-    power_per_machine = st.number_input("กำลังไฟต่อเครื่อง (วัตต์)", min_value=100.0, value=500.0)
+    power_per_machine = st.number_input("กำลังไฟเฉลี่ยต่อเครื่อง (วัตต์)", min_value=100.0, value=500.0)
 
 with col2:
-    # [INPUT] ปัจจัยในการผลิตพลังงาน
+    st.markdown("**ข้อมูลการผลิตพลังงาน (Supply)**")
     work_hours = st.number_input("ชั่วโมงทำงานต่อวัน", min_value=1.0, max_value=24.0, value=8.0)
     sunlight_hours = st.number_input("ชั่วโมงแดดเฉลี่ยต่อวัน", min_value=1.0, max_value=12.0, value=5.0)
     panel_power = st.number_input("กำลังแผงต่อแผง (วัตต์)", min_value=100.0, value=300.0)
+    
+    # [NEW INPUT] จำนวนแผงที่ติดตั้งจริง
+    actual_installed_panels = st.number_input("จำนวนแผงที่ติดตั้งจริง (แผง)", min_value=1, step=1, value=100) 
 
+with col3:
+    st.markdown("**ข้อมูลวิเคราะห์ความคุ้มค่า (Economics)**")
+    # [NEW INPUT] ค่าติดตั้งและค่าไฟ
+    investment_cost = st.number_input("เงินลงทุนติดตั้งระบบ (บาท)", min_value=1000.0, value=150000.0, step=1000.0)
+    electricity_cost_per_kwh = st.number_input("ค่าไฟฟ้าต่อหน่วย (บาท/kWh)", min_value=0.1, value=4.5)
+    
 # ----------------------------
-# 2. คำนวณ (ใช้ st.button เพื่อสั่งให้คำนวณเมื่อพร้อม)
+# 2. คำนวณ (ใช้ st.button)
 # ----------------------------
-if st.button("☀️ คำนวณพลังงาน"):
+if st.button("☀️ คำนวณและจำลองผลลัพธ์"):
     
-    # (1) พลังงานที่ใช้จริงต่อวัน (Demand)
-    energy_used = (machine_count * power_per_machine * work_hours) / 1000  # kWh per day
+    # === [คำนวณพลังงาน] ===
+    days_in_month = 30 # สมมติฐาน 30 วันต่อเดือน
     
-    # (2) พลังงานผลิตได้ต่อแผงต่อวัน (Supply Per Panel)
-    # 0.75 คือค่าประสิทธิภาพของระบบ (Efficiency)
-    energy_per_panel = (panel_power * sunlight_hours * 0.75) / 1000        # kWh per panel per day
+    # 1. พลังงานที่ใช้จริง
+    energy_used_day = (machine_count * power_per_machine * work_hours) / 1000  # kWh/วัน
+    energy_used_month = energy_used_day * days_in_month # kWh/เดือน
     
-    # (3) จำนวนแผงที่ต้องใช้ (Panels Needed)
-    panels_needed = energy_used / energy_per_panel if energy_per_panel > 0 else 0
+    # 2. พลังงานผลิตได้ต่อแผง
+    energy_per_panel = (panel_power * sunlight_hours * 0.75) / 1000        # kWh/แผง/วัน (0.75 คือประสิทธิภาพ)
     
-    # (4) คาร์บอนที่ลดได้ต่อเดือน (CO₂ Reduction)
-    co2_saved = energy_used * 0.43 * 30  # kgCO₂/month (0.43 kgCO₂/kWh)
+    # 3. จำนวนแผงที่ต้องการ (เพื่อครอบคลุม Demand พอดี)
+    panels_needed = energy_used_day / energy_per_panel if energy_per_panel > 0 else 0
     
-    # (5) พลังงานผลิตได้รวมทั้งหมด (Total Supply)
-    total_energy_produced = energy_per_panel * panels_needed 
+    # 4. พลังงานผลิตได้จริง (จากแผงที่ติดตั้งจริง)
+    actual_production_day = energy_per_panel * actual_installed_panels
     
-    # ----------------------------
-    # 3. แสดงผล (Metrics)
-    # ----------------------------
-    st.subheader("🔍 ผลลัพธ์การคำนวณ: ความสมดุลของระบบ")
-    
-    col_met1, col_met2, col_met3, col_met4 = st.columns(4)
-    col_met1.metric("พลังงานที่ใช้ต่อวัน", f"{energy_used:.2f} kWh")
-    col_met2.metric("พลังงานผลิตได้รวมต่อวัน", f"{total_energy_produced:.2f} kWh")
-    col_met3.metric("จำนวนแผงที่ต้องใช้", f"{panels_needed:.1f} แผง")
-    col_met4.metric("คาร์บอนที่ลดได้ต่อเดือน", f"{co2_saved:.1f} kgCO₂")
+    # 5. พลังงานส่วนเกิน/ขาด (Surplus/Deficit)
+    surplus_day = actual_production_day - energy_used_day 
+    surplus_month = surplus_day * days_in_month
 
+    # === [คำนวณความคุ้มค่า] ===
+    # 6. ประหยัดค่าไฟ (Cost Savings)
+    # *ใช้พลังงานที่ใช้จริงในการคำนวณ เพราะคือส่วนที่ประหยัดได้จาก Grid*
+    cost_savings_month = energy_used_month * electricity_cost_per_kwh # บาท/เดือน
+    
+    # 7. คาร์บอนที่ลดได้
+    co2_saved_month = energy_used_month * 0.43 # kgCO₂/เดือน (0.43 kgCO₂/kWh)
+    
+    # 8. ระยะเวลาคืนทุน (Payback Period)
+    payback_period_years = investment_cost / (cost_savings_month * 12) if cost_savings_month > 0 else 0
+    
     # ----------------------------
-    # 4. สร้างกราฟ (ภาษาอังกฤษล้วน)
+    # 3. แสดงผลลัพธ์และวิเคราะห์ (Metrics)
     # ----------------------------
-    st.subheader("📊 Energy Balance Chart") 
+    st.subheader("🔍 ผลลัพธ์และการวิเคราะห์: Sun to Sort Simulation")
+    
+    st.markdown("#### 🔋 ผลวิเคราะห์ด้านพลังงานและความสมดุล")
+    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+    
+    col_e1.metric("พลังงานที่ใช้ต่อเดือน", f"{energy_used_month:.0f} kWh")
+    col_e2.metric("จำนวนแผงที่ต้องการ (ขั้นต่ำ)", f"{panels_needed:.0f} แผง")
+    
+    # [ANALYSIS] แสดง Surplus/Deficit พร้อมสี
+    if surplus_day >= 0:
+        col_e3.metric("พลังงานส่วนเกินต่อวัน", f"{surplus_day:.1f} kWh", delta=f"{surplus_month:.0f} kWh/เดือน", delta_color="normal")
+        col_e4.metric("สถานะระบบ", "ผลิตไฟพอ", delta="✅ แผงที่ติดตั้งจริง > ที่ต้องการ", delta_color="inverse")
+    else:
+        col_e3.metric("พลังงานที่ขาดต่อวัน", f"{abs(surplus_day):.1f} kWh", delta=f"{abs(surplus_month):.0f} kWh/เดือน", delta_color="inverse")
+        col_e4.metric("สถานะระบบ", "ผลิตไฟไม่พอ", delta="❌ แผงที่ติดตั้งจริง < ที่ต้องการ", delta_color="normal")
+        
+    st.markdown("#### 💰 ผลวิเคราะห์ด้านเศรษฐศาสตร์และสิ่งแวดล้อม")
+    col_c1, col_c2, col_c3 = st.columns(3)
+    col_c1.metric("ประหยัดค่าไฟต่อเดือน", f"{cost_savings_month:,.0f} บาท")
+    col_c2.metric("ระยะเวลาคืนทุน", f"{payback_period_years:.2f} ปี")
+    col_c3.metric("ลดคาร์บอนต่อเดือน", f"{co2_saved_month:.0f} kgCO₂")
+    
+    # ----------------------------
+    # 4. สร้างกราฟเปรียบเทียบ (Demand vs. Actual Supply)
+    # ----------------------------
+    st.subheader("📊 Energy Balance Chart (Demand vs. Actual Production)") 
     fig, ax = plt.subplots(figsize=(8, 4)) 
 
-    categories = ["Energy Used", "Energy Produced"]
-    values = [energy_used, total_energy_produced]
+    # [FIX] ใช้ Actual Production (จากแผงที่ติดตั้งจริง) มาเทียบกับ Energy Used
+    categories = ["Energy Used (Demand)", "Energy Produced (Actual)"]
+    values = [energy_used_day, actual_production_day]
 
     ax.bar(categories, values, color=["#ffb703", "#219ebc"])
-    ax.set_ylabel("Energy (kWh)") 
-    ax.set_title("Actual Energy Use vs. Required Production") 
+    ax.set_ylabel("Energy (kWh/Day)") 
+    ax.set_title("Actual Daily Energy Demand vs. Actual Solar Production") 
     ax.grid(axis='y', linestyle='--', alpha=0.7)
 
     st.pyplot(fig) 
@@ -82,15 +122,13 @@ if st.button("☀️ คำนวณพลังงาน"):
     # 5. ดาวน์โหลดผลลัพธ์
     # ----------------------------
     df = pd.DataFrame({
-        "Item": ["Actual Energy Use (kWh)", "Total Energy Produced (kWh)", "Panels Needed", "CO2 Saved (kg/month)"], 
-        "Value": [energy_used, total_energy_produced, panels_needed, co2_saved]
+        "Item": ["Energy Used (kWh/Month)", "Actual Production (kWh/Month)", "Panels Needed (Minimum)", "Surplus/Deficit (kWh/Month)", "Cost Savings (THB/Month)", "CO2 Saved (kg/Month)", "Payback Period (Years)"], 
+        "Value": [energy_used_month, actual_production_day * days_in_month, panels_needed, surplus_month, cost_savings_month, co2_saved_month, payback_period_years]
     })
 
     st.download_button(
-        label="📥 Download Results (CSV)", 
+        label="📥 Download Full Results (CSV)", 
         data=df.to_csv(index=False).encode('utf-8'),
-        file_name="sun_to_sort_result.csv",
+        file_name="sun_to_sort_analysis.csv",
         mime="text/csv",
     )
-
-st.info("💡 คำแนะนำ: กดปุ่ม '☀️ คำนวณพลังงาน' เพื่อดูผลลัพธ์และกราฟ")
