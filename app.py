@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import math # สำหรับ math.ceil
 
 # [NOTE] ตั้งค่าฟอนต์พื้นฐานสำหรับ Streamlit Cloud
-# การตั้งค่านี้ช่วยให้แสดงผลบน Streamlit Cloud ได้ถูกต้อง แม้จะใช้ภาษาไทย
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans'] 
 plt.rcParams['axes.unicode_minus'] = False # แก้ปัญหาเครื่องหมายลบใน Matplotlib
@@ -25,7 +24,7 @@ col_gen1, col_gen2 = st.columns(2)
 
 with col_gen1:
     location = st.text_input("ตำแหน่งที่ตั้ง (เช่น กรุงเทพฯ)", "กรุงเทพฯ")
-    # [FIX] ค่าเริ่มต้นสำหรับชั่วโมงแดดเฉลี่ย
+    # [FIX] ค่าเริ่มต้นสำหรับชั่วโมงแดดเฉลี่ย (แก้ไขได้)
     sun_hours = st.number_input("ชั่วโมงแดดเฉลี่ยต่อวัน (ชั่วโมง)", min_value=1.0, max_value=12.0, value=4.5, step=0.1)
     panel_power_W = st.number_input("กำลังแผงต่อแผง (วัตต์)", min_value=100, value=370, step=10)
     # [FIX] ค่าเริ่มต้นสำหรับ derating_factor
@@ -67,9 +66,9 @@ for waste_type in selected_waste_types:
     col_w1, col_w2 = st.columns(2)
     with col_w1:
         # ใช้ key ที่ไม่ซ้ำกันสำหรับ number_input
-        kg_per_day = st.number_input(f"ปริมาณ {waste_type} ต่อวัน (กก.)", min_value=0.0, value=100.0, key=f"{waste_type}_kg_input") 
+        kg_per_day = st.number_input(f"ปริมาณ {waste_type} ต่อวัน (กก.)", min_value=0.0, value=100.0, key=f"{waste_type}_kg")
     with col_w2:
-        energy_per_kg = st.number_input(f"พลังงานต่อ 1 กก. ของ {waste_type} (Wh/กก.)", min_value=0.0, value=float(default_energy_per_kg.get(waste_type, 10)), key=f"{waste_type}_energy_input")
+        energy_per_kg = st.number_input(f"พลังงานต่อ 1 กก. ของ {waste_type} (Wh/กก.)", min_value=0.0, value=float(default_energy_per_kg.get(waste_type, 10)), key=f"{waste_type}_energy")
     waste_data[waste_type] = {"kg_per_day": kg_per_day, "Wh_per_kg": energy_per_kg}
 
 # === ส่วนที่ 3: ข้อมูลการทำงานและแบตเตอรี่ (Optional) ===
@@ -80,7 +79,6 @@ with col_ops1:
     machine_availability_hours_per_day = st.number_input("ชั่วโมงทำงานของศูนย์ต่อวัน (ชั่วโมง)", min_value=1.0, max_value=24.0, value=8.0, step=0.5)
 
 # ตัวแปรสำหรับเก็บค่าแบตเตอรี่
-battery_backup_hours = 0
 V_system = 0
 DoD = 0
 inverter_efficiency = 0
@@ -119,13 +117,14 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
     total_production_kWh_per_day = needed_panels * daily_output_kWh_per_panel
     monthly_production_kWh = total_production_kWh_per_day * days_in_month
 
-    # 5. พลังงานใช้ต่อเดือน (ใช้ในการคำนวณการประหยัด)
+    # 5. พลังงานใช้ต่อเดือน
     monthly_consumption_kWh = energy_needed_per_day_kWh * days_in_month
 
-    # 6. ประหยัดค่าไฟต่อเดือน (บาท)
+    # 6. ประหยัดค่าไฟต่อเดือน (บาท) -> ตัวแปรสำคัญ: monthly_saving_Baht
+    # ใช้พลังงานที่ใช้จริงในการคำนวณการประหยัด (ส่วนที่ใช้จากโซลาร์ แทน Grid)
     monthly_saving_Baht = monthly_consumption_kWh * price_per_kwh 
 
-    # 7. ระยะเวลาคืนทุน (ปี)
+    # 7. ระยะเวลาคืนทุน (ปี) -> ตัวแปรสำคัญ: payback_years
     if installation_cost > 0 and monthly_saving_Baht > 0:
         payback_years = installation_cost / (monthly_saving_Baht * 12)
     else:
@@ -137,11 +136,8 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
     # 9. การคำนวณแบตเตอรี่ (ถ้าต้องการสำรอง)
     battery_Ah = 0
     if battery_backup_hours > 0 and machine_availability_hours_per_day > 0 and V_system > 0 and DoD > 0 and inverter_efficiency > 0:
-        # พลังงานที่ต้องสำรอง (kWh)
         energy_for_backup_kWh = (energy_needed_per_day_kWh / machine_availability_hours_per_day) * battery_backup_hours
         battery_wh_needed = energy_for_backup_kWh * 1000
-        
-        # สูตรหา Ah: (Wh / V_system) / (DoD * Inverter Efficiency)
         battery_Ah = battery_wh_needed / (V_system * DoD * inverter_efficiency)
     
     # กำหนดค่าสำหรับแสดงผลกรณีไม่มีแบตเตอรี่
@@ -149,6 +145,7 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
         battery_Ah_display = "N/A"
     else:
         battery_Ah_display = f"{battery_Ah:,.0f} Ah"
+
 
     # === แสดงผลลัพธ์ (Metrics) ===
     st.subheader("2.1 สรุปผลลัพธ์หลัก")
@@ -174,20 +171,85 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
         st.metric("ความจุแบตเตอรี่ที่ต้องการ (สำหรับสำรอง)", battery_Ah_display)
 
 
-    # === สร้างกราฟเปรียบเทียบ ===
+    # === สร้างกราฟเปรียบเทียบ Energy Balance ===
     st.subheader("2.4 Energy Balance Chart") 
     fig, ax = plt.subplots(figsize=(8, 4)) 
 
-    # สร้างข้อมูลสำหรับกราฟ (ต้องให้แน่ใจว่าค่าเป็นตัวเลข)
-    categories = ["พลังงานที่ต้องการ (kWh/วัน)", "พลังงานที่ผลิตได้ (kWh/วัน)"]
+    categories = ["Energy Needed (Daily)", "Energy Produced (Daily)"]
     values = [energy_needed_per_day_kWh, total_production_kWh_per_day]
 
     ax.bar(categories, values, color=["#ffb703", "#219ebc"])
-    ax.set_ylabel("พลังงาน (kWh/วัน)") 
-    ax.set_title("ความต้องการพลังงานต่อวัน VS พลังงานที่ผลิตได้จากโซลาร์") 
+    ax.set_ylabel("Energy (kWh/Day)") 
+    ax.set_title("Daily Energy Demand vs. Solar Production") 
     ax.grid(axis='y', linestyle='--', alpha=0.7)
 
     st.pyplot(fig) 
+    
+    # --- กราฟเส้นแสดงการคืนทุน (Payback) ---
+    if payback_years != float('inf') and installation_cost > 0:
+        st.subheader("💰 Cumulative Cost Savings & Payback Period")
+
+        # กำหนดจำนวนปีที่ต้องการจำลอง
+        # ถ้าคืนทุนเร็วกว่า 5 ปี ให้จำลองถึง 10 ปี หรือมากกว่าปีที่คืนทุน 2 ปี
+        max_years = max(10, math.ceil(payback_years) + 2) 
+        
+        # คำนวณค่าประหยัดต่อปี
+        annual_savings = monthly_saving_Baht * 12
+        
+        # สร้างข้อมูลสำหรับกราฟเส้น
+        data = []
+        cumulative_savings = 0
+        
+        # วนลูปเพื่อคำนวณการประหยัดสะสมในแต่ละปี
+        for year in range(1, max_years + 1):
+            cumulative_savings += annual_savings
+            
+            # การตรวจสอบ is_payback ถูกปรับให้ง่ายขึ้นและไม่จำเป็นต้องใช้
+            
+            data.append({
+                'Year': year,
+                'Cumulative Savings (THB)': cumulative_savings,
+                'Investment Cost (THB)': installation_cost,
+            })
+            
+            # ไม่จำเป็นต้องหยุดลูปเพราะเราต้องการแสดงผลลัพธ์ไปจนถึง max_years
+
+        df_payback = pd.DataFrame(data)
+
+        # สร้างกราฟเส้น
+        fig_line, ax_line = plt.subplots(figsize=(10, 5)) 
+
+        # Plot เส้น Investment Cost (เส้นคงที่)
+        ax_line.plot(df_payback['Year'], df_payback['Investment Cost (THB)'], 
+                     label='Investment Cost', color='red', linestyle='--')
+                     
+        # Plot เส้น Cumulative Savings (เส้นสะสม)
+        ax_line.plot(df_payback['Year'], df_payback['Cumulative Savings (THB)'], 
+                     label='Cumulative Savings', color='#2a9d8f', linewidth=3)
+
+        # ใส่จุด Payback (ถ้าคำนวณได้และอยู่ภายในช่วง max_years)
+        if payback_years <= max_years:
+            payback_x = payback_years 
+            payback_y = installation_cost
+            
+            # วาดเส้นแนวตั้งตรงจุดคืนทุน
+            ax_line.axvline(x=payback_x, color='gray', linestyle=':', linewidth=1)
+            # วาดจุดคืนทุน
+            ax_line.plot(payback_x, payback_y, 'o', color='black', markersize=8, label='Payback Point')
+            
+            # เพิ่มข้อความกำกับ
+            ax_line.text(payback_x + 0.1, payback_y * 0.9, f'{payback_years:.2f} Years', 
+                         fontsize=10, color='red')
+
+        ax_line.set_xlabel("Year")
+        ax_line.set_ylabel("Cost/Savings (THB)")
+        ax_line.set_title("Financial Payback Analysis")
+        ax_line.legend()
+        ax_line.grid(axis='both', linestyle='--', alpha=0.7)
+
+        st.pyplot(fig_line)
+    # --- สิ้นสุดส่วนกราฟ Payback ---
+
 
     # === ดาวน์โหลดผลลัพธ์ ===
     st.subheader("2.5 ดาวน์โหลดผลลัพธ์")
