@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 import math # สำหรับ math.ceil
 
 # [NOTE] ตั้งค่าฟอนต์พื้นฐานสำหรับ Streamlit Cloud
+# การตั้งค่านี้ช่วยให้แสดงผลบน Streamlit Cloud ได้ถูกต้อง แม้จะใช้ภาษาไทย
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans'] 
+plt.rcParams['axes.unicode_minus'] = False # แก้ปัญหาเครื่องหมายลบใน Matplotlib
 
 st.set_page_config(page_title="Sun to Sort v2", layout="wide")
 
@@ -23,7 +25,7 @@ col_gen1, col_gen2 = st.columns(2)
 
 with col_gen1:
     location = st.text_input("ตำแหน่งที่ตั้ง (เช่น กรุงเทพฯ)", "กรุงเทพฯ")
-    # [FIX] ค่าเริ่มต้นสำหรับชั่วโมงแดดเฉลี่ย (แก้ไขได้)
+    # [FIX] ค่าเริ่มต้นสำหรับชั่วโมงแดดเฉลี่ย
     sun_hours = st.number_input("ชั่วโมงแดดเฉลี่ยต่อวัน (ชั่วโมง)", min_value=1.0, max_value=12.0, value=4.5, step=0.1)
     panel_power_W = st.number_input("กำลังแผงต่อแผง (วัตต์)", min_value=100, value=370, step=10)
     # [FIX] ค่าเริ่มต้นสำหรับ derating_factor
@@ -64,9 +66,10 @@ st.markdown("**กรอกปริมาณขยะและพลังง�
 for waste_type in selected_waste_types:
     col_w1, col_w2 = st.columns(2)
     with col_w1:
-        kg_per_day = st.number_input(f"ปริมาณ {waste_type} ต่อวัน (กก.)", min_value=0.0, value=100.0, key=f"{waste_type}_kg")
+        # ใช้ key ที่ไม่ซ้ำกันสำหรับ number_input
+        kg_per_day = st.number_input(f"ปริมาณ {waste_type} ต่อวัน (กก.)", min_value=0.0, value=100.0, key=f"{waste_type}_kg_input") 
     with col_w2:
-        energy_per_kg = st.number_input(f"พลังงานต่อ 1 กก. ของ {waste_type} (Wh/กก.)", min_value=0.0, value=float(default_energy_per_kg.get(waste_type, 10)), key=f"{waste_type}_energy")
+        energy_per_kg = st.number_input(f"พลังงานต่อ 1 กก. ของ {waste_type} (Wh/กก.)", min_value=0.0, value=float(default_energy_per_kg.get(waste_type, 10)), key=f"{waste_type}_energy_input")
     waste_data[waste_type] = {"kg_per_day": kg_per_day, "Wh_per_kg": energy_per_kg}
 
 # === ส่วนที่ 3: ข้อมูลการทำงานและแบตเตอรี่ (Optional) ===
@@ -75,6 +78,12 @@ col_ops1, col_ops2 = st.columns(2)
 
 with col_ops1:
     machine_availability_hours_per_day = st.number_input("ชั่วโมงทำงานของศูนย์ต่อวัน (ชั่วโมง)", min_value=1.0, max_value=24.0, value=8.0, step=0.5)
+
+# ตัวแปรสำหรับเก็บค่าแบตเตอรี่
+battery_backup_hours = 0
+V_system = 0
+DoD = 0
+inverter_efficiency = 0
 
 with col_ops2:
     battery_backup_hours = st.number_input("ต้องการสำรองพลังงาน (ชั่วโมงสำรอง)", min_value=0.0, value=0.0, step=0.5)
@@ -110,11 +119,10 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
     total_production_kWh_per_day = needed_panels * daily_output_kWh_per_panel
     monthly_production_kWh = total_production_kWh_per_day * days_in_month
 
-    # 5. พลังงานใช้ต่อเดือน
+    # 5. พลังงานใช้ต่อเดือน (ใช้ในการคำนวณการประหยัด)
     monthly_consumption_kWh = energy_needed_per_day_kWh * days_in_month
 
     # 6. ประหยัดค่าไฟต่อเดือน (บาท)
-    # ใช้พลังงานที่ใช้จริงในการคำนวณการประหยัด (ส่วนที่ใช้จากโซลาร์ แทน Grid)
     monthly_saving_Baht = monthly_consumption_kWh * price_per_kwh 
 
     # 7. ระยะเวลาคืนทุน (ปี)
@@ -128,12 +136,19 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
 
     # 9. การคำนวณแบตเตอรี่ (ถ้าต้องการสำรอง)
     battery_Ah = 0
-    if battery_backup_hours > 0 and machine_availability_hours_per_day > 0:
+    if battery_backup_hours > 0 and machine_availability_hours_per_day > 0 and V_system > 0 and DoD > 0 and inverter_efficiency > 0:
+        # พลังงานที่ต้องสำรอง (kWh)
         energy_for_backup_kWh = (energy_needed_per_day_kWh / machine_availability_hours_per_day) * battery_backup_hours
         battery_wh_needed = energy_for_backup_kWh * 1000
-        if V_system * DoD * inverter_efficiency > 0:
-            battery_Ah = battery_wh_needed / (V_system * DoD * inverter_efficiency)
         
+        # สูตรหา Ah: (Wh / V_system) / (DoD * Inverter Efficiency)
+        battery_Ah = battery_wh_needed / (V_system * DoD * inverter_efficiency)
+    
+    # กำหนดค่าสำหรับแสดงผลกรณีไม่มีแบตเตอรี่
+    if battery_Ah == 0:
+        battery_Ah_display = "N/A"
+    else:
+        battery_Ah_display = f"{battery_Ah:,.0f} Ah"
 
     # === แสดงผลลัพธ์ (Metrics) ===
     st.subheader("2.1 สรุปผลลัพธ์หลัก")
@@ -154,27 +169,32 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
     else:
         col_eco2.metric("ระยะเวลาคืนทุน", "ไม่สามารถคำนวณได้")
 
-    if battery_Ah > 0:
+    if battery_backup_hours > 0:
         st.subheader("2.3 การคำนวณแบตเตอรี่สำรอง")
-        st.metric("ความจุแบตเตอรี่ที่ต้องการ (สำหรับสำรอง)", f"{battery_Ah:,.0f} Ah")
+        st.metric("ความจุแบตเตอรี่ที่ต้องการ (สำหรับสำรอง)", battery_Ah_display)
 
 
     # === สร้างกราฟเปรียบเทียบ ===
     st.subheader("2.4 Energy Balance Chart") 
     fig, ax = plt.subplots(figsize=(8, 4)) 
 
-    categories = ["Energy Needed (Daily)", "Energy Produced (Daily)"]
+    # สร้างข้อมูลสำหรับกราฟ (ต้องให้แน่ใจว่าค่าเป็นตัวเลข)
+    categories = ["พลังงานที่ต้องการ (kWh/วัน)", "พลังงานที่ผลิตได้ (kWh/วัน)"]
     values = [energy_needed_per_day_kWh, total_production_kWh_per_day]
 
     ax.bar(categories, values, color=["#ffb703", "#219ebc"])
-    ax.set_ylabel("Energy (kWh/Day)") 
-    ax.set_title("Daily Energy Demand vs. Solar Production") 
+    ax.set_ylabel("พลังงาน (kWh/วัน)") 
+    ax.set_title("ความต้องการพลังงานต่อวัน VS พลังงานที่ผลิตได้จากโซลาร์") 
     ax.grid(axis='y', linestyle='--', alpha=0.7)
 
     st.pyplot(fig) 
 
     # === ดาวน์โหลดผลลัพธ์ ===
     st.subheader("2.5 ดาวน์โหลดผลลัพธ์")
+    
+    # ปรับค่าสำหรับ DataFrame เพื่อให้แสดงผลลัพธ์ที่คำนวณได้อย่างถูกต้อง
+    display_payback = f"{payback_years:.2f}" if payback_years != float('inf') else "N/A"
+    
     results_data = {
         "Metric": [
             "Energy Needed (kWh/Day)", "Energy Needed (kWh/Month)",
@@ -184,11 +204,11 @@ if st.button("☀️ คำนวณและจำลองผลลัพธ�
             "Monthly CO2 Reduction (kg)", "Battery Capacity Needed (Ah)"
         ],
         "Value": [
-            energy_needed_per_day_kWh, monthly_consumption_kWh,
-            daily_output_kWh_per_panel, needed_panels,
-            total_production_kWh_per_day, monthly_production_kWh,
-            monthly_saving_Baht, payback_years,
-            monthly_co2_reduction_kg, battery_Ah
+            f"{energy_needed_per_day_kWh:.2f}", f"{monthly_consumption_kWh:.2f}",
+            f"{daily_output_kWh_per_panel:.2f}", f"{needed_panels:.0f}",
+            f"{total_production_kWh_per_day:.2f}", f"{monthly_production_kWh:.2f}",
+            f"{monthly_saving_Baht:,.2f}", display_payback,
+            f"{monthly_co2_reduction_kg:.0f}", battery_Ah_display.replace(" Ah", "")
         ]
     }
     df_results = pd.DataFrame(results_data)
