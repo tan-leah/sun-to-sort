@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib import font_manager as fm # บรรทัดที่ 4: เพิ่มมาเพื่อช่วยเรื่องฟอนต์
+
+# FIX: กำหนดให้ Matplotlib ใช้ฟอนต์ที่รองรับภาษาไทย
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Tahoma', 'Garuda', 'Laksaman', 'DejaVu Sans']
+
 
 st.set_page_config(page_title="Sun to Sort", layout="wide")
 
