@@ -34,7 +34,7 @@ with col2:
     panel_power = st.number_input("กำลังแผงต่อแผง (วัตต์)", min_value=100.0, value=300.0)
     
     # จำนวนแผงที่ติดตั้งจริง (ใช้ในการคำนวณผลผลิตจริง)
-    actual_installed_panels = st.number_input("จำนวนแผงที่ติดตั้งจริง (แผง)", min_value=1, step=1, value=100) 
+    actual_installed_panels = st.number_input("จำนวนแผงที่คาดว่าจะติดตั้ง (แผง)", min_value=1, step=1, value=100) 
 
 with col3:
     st.markdown("**ข้อมูลวิเคราะห์ความคุ้มค่า (Economics)**")
